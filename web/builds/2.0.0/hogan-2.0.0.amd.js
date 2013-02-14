@@ -1,3 +1,14 @@
+// 8tracks patched version of Hogan.js 2.0.0
+// adds support for lambdas with block access in precompiled templates
+// PLUS require-js style AMD wrapper from hgn.js
+// Revision author: Matthew Cieplak (matthew@8tracks.com)
+
+define(function(require, exports, module){
+
+// START WRAPPED CODE
+// ===========================================================================
+
+
 /*
  *  Copyright 2011 Twitter, Inc.
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,9 +74,29 @@ var Hogan = {};
     // render a section
     rs: function(context, partials, section) {
       var tail = context[context.length - 1];
+      var func, offset;
+
+      if (typeof tail == 'function') {
+        func = tail;
+        offset = this.buf.length;
+      }
 
       if (!isArray(tail)) {
         section(context, partials, this);
+
+        if (func){
+          //evaluated block is now at the end of the buffer
+          //substr it off for use as argument
+          var arg = this.buf.substr(offset);
+          this.buf = this.buf.substr(0, offset);
+
+          // 8tracks
+          // use the most recent context rather than the root
+          // by assuming it's the last non-function value in context[]
+          bunc = this.binderator(func, context[context.length-2]);
+          this.b(bunc(arg));
+        }
+
         return;
       }
 
@@ -76,6 +107,15 @@ var Hogan = {};
       }
     },
 
+    binderator : function(func, context) {
+      var nativeBind = Function.prototype.bind;
+      if (func.bind === nativeBind && nativeBind) return nativeBind.apply(func, Array.prototype.slice.call(arguments, 1));
+      var args = Array.prototype.slice.call(arguments, 2);
+      return function() {
+        return func.apply(context, args.concat(Array.prototype.slice.call(arguments)));
+      };
+    },
+
     // maybe start a section
     s: function(val, ctx, partials, inverted, start, end, tags) {
       var pass;
@@ -84,17 +124,30 @@ var Hogan = {};
         return false;
       }
 
+      var func;
       if (typeof val == 'function') {
-        val = this.ls(val, ctx, partials, inverted, start, end, tags);
+        val = this.ms(val, ctx, partials);
+        if (typeof val == 'function') {
+          func = val;
+        }
       }
 
       pass = (val === '') || !!val;
 
       if (!inverted && pass && ctx) {
-        ctx.push((typeof val == 'object') ? val : ctx[ctx.length - 1]);
+        if (func) {
+          ctx.push(func);
+        } else {
+          ctx.push((typeof val == 'object') ? val : ctx[ctx.length - 1]);
+        }
       }
 
       return pass;
+    },
+
+    ms: function(func, ctx, partials) {
+      var cx = ctx[ctx.length - 1];
+      return func.call(cx);
     },
 
     // find values with dotted names
@@ -158,7 +211,7 @@ var Hogan = {};
     // higher order templates
     ho: function(val, cx, partials, text, tags) {
       var compiler = this.c;
-      var options = this.options;
+      var options = this.options || {};
       options.delimiters = tags;
       var text = val.call(cx, text);
       text = (text == null) ? String(text) : text.toString();
@@ -241,7 +294,10 @@ var Hogan = {};
 
 })(typeof exports !== 'undefined' ? exports : Hogan);
 
+////////////
 
+
+//>>excludeStart('excludeHogan', pragmas.excludeHogan)
 
 
 (function (Hogan) {
@@ -574,7 +630,9 @@ var Hogan = {};
   };
 })(typeof exports !== 'undefined' ? exports : Hogan);
 
+//>>excludeEnd('excludeHogan')
 
-if (typeof define === 'function' && define.amd) {
-  define(Hogan);
-}
+
+// END WRAPPED CODE
+// ===========================================================================
+});
